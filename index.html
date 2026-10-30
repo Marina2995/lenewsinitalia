@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Metacarta: il mondo visto dalle notizie italiane</title>
+<style>
+:root{--bg:#eef0f3;--fg:#14181f;--muted:#5b6472;--panel:rgba(255,255,255,.82);--line:rgba(20,24,31,.16);--globe:#bcd0e6;--land:#f2eee4;--coast:#7d8ba3;--grid:#8c98ab;--gold:#c28a00;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a0f1d;--fg:#e9edf5;--muted:#9aa5ba;--panel:rgba(16,23,42,.82);--line:rgba(233,237,245,.16);--globe:#0b1430;--land:#1f2d52;--coast:#4a6094;--grid:#4a5a7d;--gold:#f2c14e}}
+:root[data-theme="dark"]{--bg:#0a0f1d;--fg:#e9edf5;--muted:#9aa5ba;--panel:rgba(16,23,42,.82);--line:rgba(233,237,245,.16);--globe:#0b1430;--land:#1f2d52;--coast:#4a6094;--grid:#4a5a7d;--gold:#f2c14e}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.4 "Trebuchet MS","Segoe UI",system-ui,sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+.box{position:fixed;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;backdrop-filter:blur(8px)}
+#head{left:12px;top:calc(12px + env(safe-area-inset-top,0px));max-width:300px}
+h1{font:700 18px/1.2 Georgia,"Times New Roman",serif;margin:0 0 4px}
+p{margin:0;color:var(--muted);font-size:12.5px}
+.tg{display:flex;gap:6px;margin-top:10px}
+button{flex:1;font:inherit;font-size:13px;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:7px;padding:6px 8px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#top{right:12px;top:calc(12px + env(safe-area-inset-top,0px));width:210px;max-height:60vh;overflow:auto}
+#top h2{font:700 13px/1.2 inherit;margin:0 0 6px}
+.r{display:block;width:100%;text-align:left;border:0;padding:3px 0;position:relative}
+.r i{position:absolute;left:0;bottom:1px;height:2px;background:var(--c)}
+.r span{display:flex;justify-content:space-between;font-size:12.5px}
+.lab{position:fixed;left:0;top:0;font-size:11px;font-weight:600;pointer-events:none;white-space:nowrap;color:var(--fg);text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 0 6px var(--bg)}
+#tip{position:fixed;pointer-events:none;display:none;font-size:12.5px;padding:6px 9px;z-index:5}
+#note{left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:340px;font-size:11.5px;color:var(--muted);padding:8px 11px}
+@media (max-width:640px){#top{display:none}#head{right:12px;max-width:none}#note{right:12px;max-width:none}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Globo 3D: dimensione dei paesi proporzionale alla copertura nelle notizie italiane"></canvas>
+<div class="box" id="head">
+<h1>Il mondo visto dall’Italia</h1>
+<p id="intro">Ogni area è un disco: più spazio ha nei telegiornali italiani di prima serata (Rai, Mediaset, La7), più cresce. Fonte: Osservatorio di Pavia e COSPE, rapporto “Illuminare le periferie” 2026. Trascina per ruotare, rotella per zoomare.</p>
+<div class="tg"><button id="s0" aria-pressed="true">TG (prima serata)</button><button id="s1" aria-pressed="false">Online</button></div>
+<div class="tg"><button id="b1" aria-pressed="true">Metacarta</button><button id="b0" aria-pressed="false">Dimensioni uguali</button></div>
+</div>
+<div class="box" id="top"><h2 id="h2">Notizie per area</h2><div id="list"></div></div>
+<div class="box" id="note">Notizie nei 7 TG di prima serata, 1 maggio 2025–31 marzo 2026 (15.189 notizie estere). Disco pieno: valore <b>pubblicato</b>. Disco chiaro (~): <b>ricostruito</b> dall’ordine in classifica e dal totale dei primi dieci (81%). Per continente: Europa 44,2%, Asia 29,6%, Nord America 20,7%, Centro-Sud America 2,6%, Africa 2,2%, Oceania 0,8%. I 23 paesi africani prioritari: 184 notizie in tutto.</div>
+<div class="box" id="tip"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// [nome, lat, lon, indice di attenzione]
+const D_OLD=[["Italia",42.5,12.5,0],["Stati Uniti",39,-98,100],["Ucraina",49,31,90],["Russia",58,60,85],["Israele",31.9,34.9,80],["Palestina (Gaza)",31.4,34.3,75],["Francia",46.5,2.5,60],["Germania",51,10,55],["Cina",35,103,55],["Regno Unito",54,-2.5,45],["Iran",32.5,54,40],["Spagna",40,-3.7,35],["Libia",27,17,30],["Turchia",39,35,30],["Egitto",26.5,30,28],["Albania",41,20,22],["Tunisia",34,9.5,22],["Argentina",-35,-65,20],["Brasile",-10,-52,20],["India",22,79,20],["Siria",35,38,20],["Giappone",36,138,18],["Svizzera",46.8,8.2,18],["Libano",33.9,35.9,18],["Grecia",39,22,16],["Austria",47.5,14.5,14],["Venezuela",7,-66,14],["Polonia",52,19,12],["Canada",57,-100,12],["Messico",23,-102,12],["Sudan",15,30,12],["Ungheria",47,19.5,10],["Belgio",50.6,4.6,10],["Marocco",32,-6,10],["Algeria",28,2.6,10],["Afghanistan",34,66,10],["Australia",-25,134,10],["Arabia Saudita",24,45,9],["Paesi Bassi",52.2,5.3,8],["Romania",45.9,25,8],["Qatar",25.3,51.2,8],["Emirati Arabi",24,54,8],["Pakistan",30,70,8],["Corea del Nord",40,127,8],["Taiwan",23.7,121,8],["Sudafrica",-30,25,8],["Portogallo",39.6,-8,7],["Nigeria",9,8,7],["Etiopia",9,40,6],["Cuba",21.5,-79.5,6],["Colombia",4,-73,6],["Corea del Sud",36.5,128,6],["Svezia",62,15,6],["Serbia",44,21,5],["Cile",-33,-71,5],["Indonesia",-2,118,5],["Norvegia",61,9,4],["Perù",-10,-75,4],["Thailandia",15,101,4],["Vietnam",16,107,3],["Filippine",12,122,3]];
+// Dati: Osservatorio di Pavia/COSPE, Illuminare le periferie 2026. [nome, lat, lon, notizie, pubblicato(1)/ricostruito(0), offset etichetta, nota]
+const TG=[["Italia",42.5,12.5,0,1,-14],
+["Stati Uniti",39,-98,2500,0,0,"2° posto in classifica; Nord America = 20,7% delle notizie localizzate"],
+["Israele, Palestina, Libano, Yemen, Siria",31.5,35.2,1907,1,0,"2.933 notizie sul conflitto allargato nel Medio Oriente meno 1.026 sull’Iran"],
+["Europa (categoria generica)",52,15,1500,0,0,"3° posto in classifica"],
+["Ucraina",49,31,1350,0,0,"4° posto in classifica"],
+["Iran",32.5,54,1026,1,0,"Notizie sul conflitto con l’Iran (35% del Medio Oriente)"],
+["Città del Vaticano",41.9,12.45,1000,0,12,"5° posto in classifica"],
+["Svizzera",46.8,8.2,850,0,-10,"6° posto in classifica (strage di Crans-Montana)"],
+["Francia",46.5,2.5,750,0,0,"7° posto in classifica"],
+["Regno Unito",54,-2.5,650,0,0,"8° posto in classifica"],
+["Russia",58,50,450,0,0,"9° posto in classifica"],
+["Germania",51,10,320,0,0,"10° posto in classifica"],
+["Spagna",40,-3.7,250,0,0,"11° posto in classifica"],
+["Venezuela",7,-66,136,1,0,"83 notizie solo a gennaio 2026 (blitz su Caracas)"],
+["Cina",35,103,110,0,0,"13° posto: meno di 136, valore ricostruito"],
+["Sudan",15,30,21,1,0,"Guerra civile: 21 servizi in 11 mesi"],
+["Cuba",21.5,-79.5,20,1,0,"20 notizie a fronte di oltre 8.000 post Facebook"]];
+const cs=getComputedStyle(document.documentElement),V=n=>cs.getPropertyValue(n).trim();
+const cv=document.getElementById("c"),R=1;
+const ren=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+ren.setPixelRatio(Math.min(devicePixelRatio,2));
+const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1,.1,50);cam.position.z=3.4;
+const G=new THREE.Group();sc.add(G);
+// Coste semplificate [lon,lat,lon,lat,...]
+const LAND=[
+[-168,66,-162,70,-156,71.5,-141,70,-128,70,-115,68,-95,68,-90,69,-82,69,-81,63,-93,61,-94,58,-88,56,-82,53,-79,55,-77,60,-72,62,-65,60,-62,57,-56,52,-60,48,-65,49,-66,45,-70,43,-70,41.5,-74,40,-76,37,-76,35,-81,31,-80,26,-82,26,-83,29.5,-88,30.2,-94,29.5,-97,26,-97.5,22,-96,19,-91,18.5,-90,21,-87,21.5,-88,16,-84,15.5,-83,11,-80,9,-77.5,8.5,-79,7.5,-82,8,-85.5,10,-87.5,13,-92,14.5,-96,15.8,-105,19.5,-106,23.5,-109,26,-112,29,-114.8,31.5,-114,28,-110,23,-112,24.5,-115,28,-117,32.5,-120.5,34.5,-122.5,37.5,-124,40.5,-124,46,-123,48.5,-127,51,-131,55,-136,58,-141,60,-148,60.5,-152,58.5,-158,56.5,-163,55,-158,58.5,-162,60,-165,62.5,-161,64.5,-168,65.5],
+[-73,78,-60,82,-30,83.5,-20,80,-20,72,-24,69,-32,68,-42,60,-48,61,-53,66,-55,70,-67,76],
+[-90,73,-76,73.5,-68,70,-62,66.5,-66,62.5,-76,64,-84,66,-90,69],[-118,72,-104,73,-101,69.5,-112,68.5,-118,70],[-90,77,-80,82.5,-62,82,-75,78.5,-80,76],
+[-77.5,8.5,-72,12,-64,10.5,-60,8.5,-52,5,-50,0,-45,-1.5,-35,-5,-35,-9,-39,-14,-39,-18,-41,-22,-48,-26,-49,-29,-53,-34,-58,-35,-57,-38,-62,-39,-65,-41,-64,-45,-67,-46.5,-66,-50,-69,-52,-68.5,-55,-72,-54,-75,-50,-73.5,-42,-73.5,-37,-71.5,-30,-70.5,-20,-71,-17,-76,-14,-79,-7,-81,-5,-80,-1,-80,1.5,-78,3,-77.5,7],
+[-17,21,-16.5,24,-13,28,-10,30,-9.5,32.5,-6,35.8,-2,35,3,36.8,10,37.3,11,33.5,15,32.3,20,32,20,30.5,25,31.5,32,31.2,34,28,35.5,24,37.2,21,39,16,43,12.5,51,12,51,10.5,48,5,41,-2,39.5,-6,40.5,-11,40.5,-15.5,35,-20,35.5,-24,33,-26,32.5,-29,30,-31.5,27,-33.5,22,-34,18.5,-34.2,17.5,-30,15,-26.5,14,-22,12,-17,13.5,-11,12,-5,9,-1,9.5,3.5,6,4.3,2,6.3,-2,4.8,-8,4.5,-11.5,7,-13.5,9.5,-17,14.7,-16,18.5],
+[49.3,-12,50.5,-15.5,47,-25,44,-25,43.5,-21,44.5,-16,47,-14.5],
+[-9,43,-9,37,-6,36,-2,36.8,0,38.7,3,42,4,43.5,7,43.5,9,44.3,11,42.5,13,41.2,15.5,40,16,38,17.2,39,16.5,40.5,18.5,40.1,16,41.9,14,42.5,12.3,44.3,12.5,45.3,13.7,45.6,15,44,19,41.5,19.4,40.4,20,39.5,21,38.3,21.7,36.8,23,36.4,23.2,37.7,24,38.2,23,39.5,24,40.3,26,40.8,26.5,40,26.5,38.5,28,36.7,32,36.2,36,36.7,35.8,34.5,35,32.5,34.3,31.3,34.9,29.5,35,28,36,26,38,24,39,21.5,41,18,43,13,45,12.8,49,14,52,16,55,17.5,57,19,59.5,22.5,56.3,26.2,51.5,24.3,50.2,26.5,48.3,29.8,50,30,51.5,27.5,54,26.5,56.3,27,57.3,25.7,61.5,25.2,66.5,25.3,68.5,23.8,70,21,72.8,19,73.5,16,74.8,12.8,76.3,9,77.5,8,79,10,80.2,13,80,15.5,82,17,85,19.5,87,21.5,89,22,91.5,22.5,92.5,20.5,94,18.5,94.5,16,97.5,16.5,98.5,13,98.5,9,100,6.5,101.5,3,103.5,1.4,104,3,103,5.5,101,6.8,100,9,99.2,10.5,100,13,101,12.7,102.5,12,103,10.5,105,8.7,106.7,10,109,12,109.3,15,108,17,106,19.5,106.6,20.5,108,21.5,110,21.2,111.5,21.5,114,22.3,117,23.5,119.5,25.5,121.5,28.5,121,31,119.5,34.5,120.8,36.8,119,37.2,118,38.5,117.8,39,121,40.5,122,39,124.5,39.7,125,38,126,34.7,129.3,35.2,129.5,37,128,38.6,127.5,39.5,129.7,41,131,42.5,133,42.8,135.5,43.5,138,46,140.5,49,140.5,53,137.5,54,135,54.7,137.5,56,142,59,147,59.3,151,59.3,155,59.3,156,57.8,156.5,51,158,51,160,53,162,56,163,58,162,60,166,60,170,60,174,61.8,177,62.5,180,65,180,68.5,178,69.5,170,69.8,165,69.5,160,69.5,152,71,146,72.5,140,72.5,131,71,129,73,125,73.5,119,73,113,73.7,108,76.5,104,77.7,98,76.5,92,75.8,87,74,80,73.5,76,72,72,72.8,69,73,67,71,69,68.5,66,68.5,60,69.5,57,68.5,53,68.5,44,68.5,41,67.5,40,66.5,34,66.5,33,69.3,28,71,24,71,19,70,15,68.5,12,65,8,63,5.2,61,5.8,58.8,8,58.1,10,59,11,59.5,11.2,58.2,12.5,56.2,12.8,55.5,14.3,55.5,16,56.2,16.8,58,18.5,60,17.5,62.5,21,64.5,24.5,65.8,25.2,65,21.5,61.5,22.5,60,25,60.2,28,60.5,30,60,28,59.4,23.5,59.2,22.5,58,21.5,57.3,21,55.5,19.5,54.5,17,54.8,14,54,11,54,10.2,55.4,10.6,57.7,8.2,57.1,8.6,54.7,8.6,53.7,7,53.5,5,53,4,51.8,3,51.3,1.7,50.9,1.5,50,-1.5,49.7,-1.5,48.7,-4.7,48.5,-4.3,47.8,-2.2,47.2,-1.2,46,-1.3,44.5,-1.8,43.4,-8,43.7],
+[-180,64.5,-173,64.5,-170,66,-175,67.5,-180,68.5],
+[-5.5,50,1.3,51,1.7,52.7,0,53.5,-1.5,55,-2,57.5,-3.5,58.6,-5,58.5,-6,57,-5,55.5,-3,54.8,-3,53.5,-4.7,52.5,-5.2,51.7,-3.5,51.3],[-10,51.8,-6,52,-6,54.5,-8,55.2,-10,54],[-24,65.5,-22,66.4,-15,66.2,-13.5,65,-18,63.4,-22.5,63.8],
+[12.5,38,15.6,38.3,15.2,36.7,12.5,37.6],[8.2,41,9.6,41,9.5,39,8.5,39],
+[130.8,33.9,132,35.5,136,36,137,37.2,139.5,38.5,140,40.5,141.5,41,142,39.5,141,36,139.8,35,137,34.6,135,33.5,133,34],[140,42,141.5,45.4,145.5,43.5,143,42],[129.8,33,131.8,33.8,131.5,31.2,130.5,31],[120.2,23,121.5,25,122,24.5,120.8,22],[79.8,9.5,81.8,7.5,80.5,6,79.8,8],[142,46,143.5,49,143,54,142,53.5,142,49],
+[95.3,5.6,98,4,104,-1,106,-3,104.5,-5.9,101,-3,98.5,2,95.5,3.7],[105.2,-6.8,108.5,-6.5,114.5,-7.8,114,-8.7,106,-7.4],[109,1.5,111,2,114,4.5,117,7,119,5,117.5,1,116,-3.5,114,-4,110,-3,109.5,-1],[119,0,120,1,125,1.5,123,-1,122,-4,120.5,-5.5,119.5,-3],[131,-0.8,135,-3.3,138,-1.8,141,-2.6,145,-4.5,147.5,-6.5,150.5,-10.5,147,-10,143.5,-8.5,141,-9,138,-8.3,137.8,-5.3,134,-4,132.5,-2.8],[120,18.5,122.2,18.4,122,16,121.5,14,124,12.8,120.5,14.2,120,16],[122,7,123.5,8.5,126.4,7.5,126,6,125,5.8,123,7],
+[113.5,-22,114,-26,115,-34,118,-35,123,-34,126,-32.2,131,-31.5,134,-32.7,137,-33.5,138,-35.5,140,-38,144,-38.5,147,-38.8,150,-37.5,151,-33.5,153,-29,153.3,-25,150.5,-22.5,146.5,-19,145.5,-15,143.5,-14,142.5,-10.7,141.5,-13,141.3,-17,139.5,-17.5,136.8,-15.5,135.5,-12,132,-11.3,130.5,-12.5,129.5,-15,125,-14.5,122.3,-17.5,120,-20,116.5,-20.7],[145,-40.8,148.3,-41,147.8,-43.2,146,-43.6],
+[172.7,-34.4,174.5,-36.5,178.5,-37.7,175.5,-41.5,174.7,-41.3,173.8,-39.2],[172.7,-40.5,174,-41.7,171,-44.5,168,-46.6,166.5,-45.8,170.5,-43],
+[-85,22,-80,23,-74.2,20.2,-77.7,19.8,-82,22.3],[-74.4,18.4,-72,19.9,-68.4,18.7,-71.5,17.7],[52,71,57,70.7,69,77,60,76.5,54,73.5],[11,78.8,17,80,27,80,22,77.5,16,76.8],
+[-180,-90,180,-90,180,-78,165,-77.5,160,-70.5,145,-67.5,135,-66,120,-66.5,100,-66.5,80,-68,70,-68,55,-66.5,45,-67.5,30,-70,15,-70,0,-70.5,-15,-71,-30,-74.5,-45,-77.5,-60,-75,-72,-73,-68,-68,-62,-64.5,-57,-63.3,-60,-66,-70,-72,-85,-73.5,-100,-74,-120,-74.5,-140,-76,-160,-78,-180,-78]
+];
+const SEAS=[[28,41.2,29,41.2,31,41.1,35,42,38,41,41.5,41.5,41.5,43,38,44.5,37,45.3,35.5,45.2,33,46,34,44.6,32.5,45.3,30.8,46.5,29.7,45.3,28.7,43.5],[47,45,49,46.5,53,46.5,53,45,51,44.5,52.5,42,53,40.5,54,37.3,51,36.7,49,37.5,49,40,48,42,47.5,43.5]];
+const tc=document.createElement("canvas");tc.width=2048;tc.height=1024;const x=tc.getContext("2d");
+x.fillStyle=V("--globe");x.fillRect(0,0,2048,1024);x.lineWidth=1.6;x.lineJoin="round";x.strokeStyle=V("--coast");
+const P=(a,f)=>{x.beginPath();for(let i=0;i<a.length;i+=2){const X=(a[i]+180)/360*2048,Y=(90-a[i+1])/180*1024;i?x.lineTo(X,Y):x.moveTo(X,Y)}x.closePath();x.fillStyle=f;x.fill();x.stroke()};
+LAND.forEach(a=>P(a,V("--land")));SEAS.forEach(a=>P(a,V("--globe")));
+const tex=new THREE.CanvasTexture(tc);tex.anisotropy=8;
+G.add(new THREE.Mesh(new THREE.SphereGeometry(R,96,64),new THREE.MeshBasicMaterial({map:tex})));
+const ll=(la,lo,r)=>{const p=(90-la)*Math.PI/180,t=(lo+180)*Math.PI/180;return new THREE.Vector3(-r*Math.sin(p)*Math.cos(t),r*Math.cos(p),r*Math.sin(p)*Math.sin(t))};
+const gm=new THREE.LineBasicMaterial({color:V("--grid"),transparent:true,opacity:.22});
+for(let la=-60;la<=60;la+=30){const a=[];for(let lo=0;lo<=360;lo+=6)a.push(ll(la,lo,1.001));G.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(a),gm))}
+for(let lo=0;lo<360;lo+=30){const a=[];for(let la=-90;la<=90;la+=6)a.push(ll(la,lo,1.001));G.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(a),gm))}
+const K=.004,BASE=.03,Z=new THREE.Vector3(0,0,1);
+const col=s=>new THREE.Color().setHSL((210-190*s/100)/360,.8,.55);
+let D=TG,MX=2933,KK=.004,src=0,items=[];
+function build(){items.forEach(t=>{G.remove(t.m);if(t.lab)t.lab.remove()});items=D.map((d,i)=>{
+  const it=i===0;
+  const m=new THREE.Mesh(new THREE.CircleGeometry(1,48),new THREE.MeshBasicMaterial({color:it?new THREE.Color(V("--gold")):col(100*Math.sqrt(d[3]/MX)),transparent:true,opacity:it||d[4]?.85:.42,depthWrite:false}));
+  const n=ll(d[1],d[2],1).normalize();
+  m.position.copy(n).multiplyScalar(1.004+(it?.003:(1-d[3]/MX)*.0021));
+  m.quaternion.setFromUnitVectors(Z,n);m.renderOrder=it?2e6:1e6-d[3];m.userData.i=i;
+  G.add(m);
+  let lab=null;if(!src||d[3]>=3500||i===0){lab=document.createElement("div");lab.className="lab";lab.textContent=d[0];document.body.appendChild(lab)}
+  return{m,n,lab,d,dy:d[5]||0}})}
+build();
+let mode=1,k=1,rotT=null;
+G.rotation.set(.6,-(Math.PI/2+12.5*Math.PI/180),0);
+const list=document.getElementById("list");
+function buildList(){list.innerHTML="";D.slice(1).forEach((d,j)=>{const b=document.createElement("button");b.className="r";b.style.setProperty("--c","#"+col(100*Math.sqrt(d[3]/MX)).getHexString());
+  b.innerHTML="<span><b>"+d[0]+"</b><em>"+(d[4]?"":"~")+d[3].toLocaleString("it-IT")+"</em></span><i style='width:"+(100*d[3]/MX)+"%'></i>";
+  b.onclick=()=>{rotT={x:Math.max(-1.2,Math.min(1.2,d[1]*Math.PI/180)),y:-(Math.PI/2+d[2]*Math.PI/180)};auto=false};list.appendChild(b)})}
+buildList();
+const ON=[["Italia",42.5,12.5,0,1,-14],["Stati Uniti",39,-98,21816,1],["Francia",46.5,2.5,15308,1],["Spagna",40,-3.7,13769,1],["Germania",51,10,12656,1],["Russia",58,50,12492,1],["Cina",35,103,11591,1],["Ucraina",49,31,10471,1],["Regno Unito",54,-2.5,7278,1],["Israele",31.5,35,7003,1],["Palestina (Gaza)",31.4,34.3,6319,1],["Iran",32.5,54,6234,1],["Turchia",39,35,5007,1],["Svizzera",46.8,8.2,4782,1,-10],["Polonia",52,19,4305,1],["Brasile",-10,-52,3980,1],["Canada",57,-100,3933,1],["Giappone",36,138,3611,1],["Grecia",39,22,3579,1],["Argentina",-35,-65,2969,1],["Città del Vaticano",41.9,12.45,2646,1,12],["Messico",23,-102,2528,1],["Australia",-25,134,2430,1],["Austria",47.5,14.5,2423,1],["India",22,79,2367,1],["Cuba",21.5,-79.5,1796,1],["Egitto",26.5,30,1733,1],["Arabia Saudita",24,45,1729,1],["Albania",41,20,1610,1],["Libano",33.9,35.9,1516,1],["Pakistan",30,70,1453,1],["Yemen",15.5,48,1439,1],["Tunisia",34,9.5,1295,1],["Venezuela",7,-66,1215,1],["Libia",27,17,1103,1],["Taiwan",23.7,121,1092,1],["Siria",35,38,1000,1],["Sudafrica",-30,25,857,1],["Afghanistan",34,66,731,1],["Sudan",15,30,685,1],["Nigeria",9,8,607,1],["Corea del Nord",40,127,464,1],["Etiopia",9,40,274,1]];
+const $=id=>document.getElementById(id);
+const SETS=[{d:TG,mx:2933,kk:.004,s:0,h:"Notizie per area",n:$("note").innerHTML,i:$("intro").innerHTML},
+{d:ON,mx:21816,kk:.00135,s:1,h:"Articoli online",i:"Ogni paese è un disco: più articoli online italiani lo citano, più cresce. Fonte: Media Cloud. Trascina per ruotare, rotella per zoomare.",n:"Articoli online italiani che citano il paese, dal 1° agosto al 30 ottobre 2026, su 525.596 notizie raccolte da Media Cloud (raccolta n. 34412372). Si cerca il nome del paese nel testo, in qualsiasi contesto: sport, turismo e cronaca contano come politica estera. È una misura diversa da quella dei TG: le scale non sono confrontabili."}];
+function setData(j){const s=SETS[j];D=s.d;MX=s.mx;KK=s.kk;src=s.s;s0.setAttribute("aria-pressed",j==0);s1.setAttribute("aria-pressed",j==1);$("h2").textContent=s.h;$("note").innerHTML=s.n;$("intro").innerHTML=s.i;build();buildList()}
+s0.onclick=()=>setData(0);s1.onclick=()=>setData(1);
+const nota=d=>d[6]||(src?(100*d[3]/525596).toFixed(2).replace(".",",")+"% di tutte le notizie italiane raccolte":"");
+const set=v=>{mode=v;b1.setAttribute("aria-pressed",v==1);b0.setAttribute("aria-pressed",v==0)};
+b1.onclick=()=>set(1);b0.onclick=()=>set(0);
+let auto=true,drag=false,px=0,py=0,moved=0;
+cv.addEventListener("pointerdown",e=>{drag=true;px=e.clientX;py=e.clientY;moved=0;auto=false;rotT=null;cv.setPointerCapture(e.pointerId);cv.style.cursor="grabbing"});
+cv.addEventListener("pointerup",()=>{drag=false;cv.style.cursor="grab"});
+const tip=document.getElementById("tip"),ray=new THREE.Raycaster(),mv=new THREE.Vector2();
+cv.addEventListener("pointermove",e=>{
+  if(drag){const s=cam.position.z/3.4;G.rotation.y+=(e.clientX-px)*.005*s;G.rotation.x=Math.max(-1.3,Math.min(1.3,G.rotation.x+(e.clientY-py)*.005*s));px=e.clientX;py=e.clientY;tip.style.display="none";return}
+  mv.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);ray.setFromCamera(mv,cam);
+  const h=ray.intersectObjects(items.map(t=>t.m));
+  if(h.length){const d=D[h.sort((a,b)=>items[a.object.userData.i].d[3]-items[b.object.userData.i].d[3])[0].object.userData.i];
+    tip.innerHTML="<b>"+d[0]+"</b><br>"+(d[3]?d[3].toLocaleString("it-IT")+(src?" articoli, ":" notizie, ")+(d[4]?(src?"misurato (Media Cloud)":"dato pubblicato"):"ricostruito")+(nota(d)?"<br>"+nota(d):""):"Il paese che osserva");
+    tip.style.display="block";tip.style.left=Math.min(e.clientX+14,innerWidth-190)+"px";tip.style.top=(e.clientY+14)+"px"}
+  else tip.style.display="none"});
+cv.addEventListener("wheel",e=>{e.preventDefault();cam.position.z=Math.max(1.8,Math.min(6,cam.position.z*(1+e.deltaY*.001)))},{passive:false});
+function size(){ren.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
+addEventListener("resize",size);size();
+const v=new THREE.Vector3(),cd=new THREE.Vector3();
+(function loop(){
+  requestAnimationFrame(loop);
+  if(auto&&!matchMedia("(prefers-reduced-motion: reduce)").matches)G.rotation.y+=.0012;
+  if(rotT){G.rotation.x+=(rotT.x-G.rotation.x)*.08;let dy=rotT.y-G.rotation.y;dy=Math.atan2(Math.sin(dy),Math.cos(dy));G.rotation.y+=dy*.08}
+  k+=(mode-k)*.07;G.updateMatrixWorld(true);cd.copy(cam.position).normalize();
+  items.forEach((t,i)=>{
+    const r=i===0?.035:BASE+(KK*Math.sqrt(t.d[3])-BASE)*k;
+    t.m.scale.set(r,r,1);
+    if(t.lab){v.copy(t.n).applyMatrix4(G.matrixWorld);const vis=v.clone().normalize().dot(cd)>.2;v.project(cam);
+      t.lab.style.opacity=vis?1:0;t.lab.style.transform="translate("+((v.x*.5+.5)*innerWidth)+"px,"+((-v.y*.5+.5)*innerHeight)+"px) translate(-50%,-50%) translate(0,"+t.dy+"px)"}});
+  ren.render(sc,cam)})();
+</script>
+</body>
+</html>
